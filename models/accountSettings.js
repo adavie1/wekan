@@ -20,6 +20,8 @@ AccountSettings.attachSchema(
       autoValue() {
         if (this.isInsert) {
           return new Date();
+        } else if (this.isUpsert) {
+          return { $setOnInsert: new Date() };
         } else {
           this.unset();
         }
@@ -79,5 +81,17 @@ if (Meteor.isServer) {
     );
   });
 }
+
+AccountSettings.helpers({
+  allowEmailChange() {
+    return AccountSettings.findOne('accounts-allowEmailChange').booleanValue;
+  },
+  allowUserNameChange() {
+    return AccountSettings.findOne('accounts-allowUserNameChange').booleanValue;
+  },
+  allowUserDelete() {
+    return AccountSettings.findOne('accounts-allowUserDelete').booleanValue;
+  },
+});
 
 export default AccountSettings;

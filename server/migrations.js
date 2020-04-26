@@ -472,38 +472,6 @@ Migrations.add('add-hide-logo', () => {
   );
 });
 
-Migrations.add('add-custom-html-after-body-start', () => {
-  Settings.update(
-    {
-      customHTMLafterBodyStart: {
-        $exists: false,
-      },
-    },
-    {
-      $set: {
-        customHTMLafterBodyStart: '',
-      },
-    },
-    noValidateMulti,
-  );
-});
-
-Migrations.add('add-custom-html-before-body-end', () => {
-  Settings.update(
-    {
-      customHTMLbeforeBodyEnd: {
-        $exists: false,
-      },
-    },
-    {
-      $set: {
-        customHTMLbeforeBodyEnd: '',
-      },
-    },
-    noValidateMulti,
-  );
-});
-
 Migrations.add('add-displayAuthenticationMethod', () => {
   Settings.update(
     {
@@ -684,39 +652,6 @@ Migrations.add('mutate-boardIds-in-customfields', () => {
   });
 });
 
-const firstBatchOfDbsToAddCreatedAndUpdated = [
-  AccountSettings,
-  Actions,
-  Activities,
-  Announcements,
-  Boards,
-  CardComments,
-  Cards,
-  ChecklistItems,
-  Checklists,
-  CustomFields,
-  Integrations,
-  InvitationCodes,
-  Lists,
-  Rules,
-  Settings,
-  Swimlanes,
-  Triggers,
-  UnsavedEdits,
-];
-
-firstBatchOfDbsToAddCreatedAndUpdated.forEach(db => {
-  db.before.insert((userId, doc) => {
-    doc.createdAt = Date.now();
-    doc.updatedAt = doc.createdAt;
-  });
-
-  db.before.update((userId, doc, fieldNames, modifier) => {
-    modifier.$set = modifier.$set || {};
-    modifier.$set.updatedAt = new Date();
-  });
-});
-
 const modifiedAtTables = [
   AccountSettings,
   Actions,
@@ -768,4 +703,341 @@ Migrations.add('add-missing-created-and-modified', () => {
       // eslint-disable-next-line no-console
       console.error(e);
     });
+});
+
+Migrations.add('fix-incorrect-dates', () => {
+  const tables = [
+    AccountSettings,
+    Actions,
+    Activities,
+    Announcements,
+    Boards,
+    CardComments,
+    Cards,
+    ChecklistItems,
+    Checklists,
+    CustomFields,
+    Integrations,
+    InvitationCodes,
+    Lists,
+    Rules,
+    Settings,
+    Swimlanes,
+    Triggers,
+    UnsavedEdits,
+  ];
+
+  // Dates were previously created with Date.now() which is a number, not a date
+  tables.forEach(t =>
+    t
+      .rawCollection()
+      .find({ $or: [{ createdAt: { $type: 1 } }, { updatedAt: { $type: 1 } }] })
+      .forEach(({ _id, createdAt, updatedAt }) => {
+        t.rawCollection().update(
+          { _id },
+          {
+            $set: {
+              createdAt: new Date(createdAt),
+              updatedAt: new Date(updatedAt),
+            },
+          },
+        );
+      }),
+  );
+});
+
+Migrations.add('add-assignee', () => {
+  Cards.update(
+    {
+      assignees: {
+        $exists: false,
+      },
+    },
+    {
+      $set: {
+        assignees: [],
+      },
+    },
+    noValidateMulti,
+  );
+});
+
+Migrations.add('add-profile-showDesktopDragHandles', () => {
+  Users.update(
+    {
+      'profile.showDesktopDragHandles': {
+        $exists: false,
+      },
+    },
+    {
+      $set: {
+        'profile.showDesktopDragHandles': false,
+      },
+    },
+    noValidateMulti,
+  );
+});
+
+Migrations.add('add-profile-hiddenMinicardLabelText', () => {
+  Users.update(
+    {
+      'profile.hiddenMinicardLabelText': {
+        $exists: false,
+      },
+    },
+    {
+      $set: {
+        'profile.hiddenMinicardLabelText': false,
+      },
+    },
+    noValidateMulti,
+  );
+});
+
+Migrations.add('add-receiveddate-allowed', () => {
+  Boards.update(
+    {
+      allowsReceivedDate: {
+        $exists: false,
+      },
+    },
+    {
+      $set: {
+        allowsReceivedDate: true,
+      },
+    },
+    noValidateMulti,
+  );
+});
+
+Migrations.add('add-startdate-allowed', () => {
+  Boards.update(
+    {
+      allowsStartDate: {
+        $exists: false,
+      },
+    },
+    {
+      $set: {
+        allowsStartDate: true,
+      },
+    },
+    noValidateMulti,
+  );
+});
+
+Migrations.add('add-duedate-allowed', () => {
+  Boards.update(
+    {
+      allowsDueDate: {
+        $exists: false,
+      },
+    },
+    {
+      $set: {
+        allowsDueDate: true,
+      },
+    },
+    noValidateMulti,
+  );
+});
+
+Migrations.add('add-enddate-allowed', () => {
+  Boards.update(
+    {
+      allowsEndDate: {
+        $exists: false,
+      },
+    },
+    {
+      $set: {
+        allowsEndDate: true,
+      },
+    },
+    noValidateMulti,
+  );
+});
+
+Migrations.add('add-members-allowed', () => {
+  Boards.update(
+    {
+      allowsMembers: {
+        $exists: false,
+      },
+    },
+    {
+      $set: {
+        allowsMembers: true,
+      },
+    },
+    noValidateMulti,
+  );
+});
+
+Migrations.add('add-assignee-allowed', () => {
+  Boards.update(
+    {
+      allowsAssignee: {
+        $exists: false,
+      },
+    },
+    {
+      $set: {
+        allowsAssignee: true,
+      },
+    },
+    noValidateMulti,
+  );
+});
+
+Migrations.add('add-labels-allowed', () => {
+  Boards.update(
+    {
+      allowsLabels: {
+        $exists: false,
+      },
+    },
+    {
+      $set: {
+        allowsLabels: true,
+      },
+    },
+    noValidateMulti,
+  );
+});
+
+Migrations.add('add-checklists-allowed', () => {
+  Boards.update(
+    {
+      allowsChecklists: {
+        $exists: false,
+      },
+    },
+    {
+      $set: {
+        allowsChecklists: true,
+      },
+    },
+    noValidateMulti,
+  );
+});
+
+Migrations.add('add-attachments-allowed', () => {
+  Boards.update(
+    {
+      allowsAttachments: {
+        $exists: false,
+      },
+    },
+    {
+      $set: {
+        allowsAttachments: true,
+      },
+    },
+    noValidateMulti,
+  );
+});
+
+Migrations.add('add-comments-allowed', () => {
+  Boards.update(
+    {
+      allowsComments: {
+        $exists: false,
+      },
+    },
+    {
+      $set: {
+        allowsComments: true,
+      },
+    },
+    noValidateMulti,
+  );
+});
+
+Migrations.add('add-assigned-by-allowed', () => {
+  Boards.update(
+    {
+      allowsAssignedBy: {
+        $exists: false,
+      },
+    },
+    {
+      $set: {
+        allowsAssignedBy: true,
+      },
+    },
+    noValidateMulti,
+  );
+});
+
+Migrations.add('add-requested-by-allowed', () => {
+  Boards.update(
+    {
+      allowsRequestedBy: {
+        $exists: false,
+      },
+    },
+    {
+      $set: {
+        allowsRequestedBy: true,
+      },
+    },
+    noValidateMulti,
+  );
+});
+
+Migrations.add('add-activities-allowed', () => {
+  Boards.update(
+    {
+      allowsActivities: {
+        $exists: false,
+      },
+    },
+    {
+      $set: {
+        allowsActivities: true,
+      },
+    },
+    noValidateMulti,
+  );
+});
+
+Migrations.add('add-description-title-allowed', () => {
+  Boards.update(
+    {
+      allowsDescriptionTitle: {
+        $exists: false,
+      },
+    },
+    {
+      $set: {
+        allowsDescriptionTitle: true,
+      },
+    },
+    noValidateMulti,
+  );
+});
+
+Migrations.add('add-description-text-allowed', () => {
+  Boards.update(
+    {
+      allowsDescriptionText: {
+        $exists: false,
+      },
+    },
+    {
+      $set: {
+        allowsDescriptionText: true,
+      },
+    },
+    noValidateMulti,
+  );
+});
+
+Migrations.add('add-sort-field-to-boards', () => {
+  Boards.find().forEach((board, index) => {
+    if (!board.hasOwnProperty('sort')) {
+      Boards.direct.update(board._id, { $set: { sort: index } }, noValidate);
+    }
+  });
 });

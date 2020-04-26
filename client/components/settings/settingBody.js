@@ -7,11 +7,13 @@ BlazeComponent.extendComponent({
     this.accountSetting = new ReactiveVar(false);
     this.announcementSetting = new ReactiveVar(false);
     this.layoutSetting = new ReactiveVar(false);
+    this.webhookSetting = new ReactiveVar(false);
 
     Meteor.subscribe('setting');
     Meteor.subscribe('mailServer');
     Meteor.subscribe('accountSettings');
     Meteor.subscribe('announcements');
+    Meteor.subscribe('globalwebhooks');
   },
 
   setError(error) {
@@ -46,7 +48,7 @@ BlazeComponent.extendComponent({
         'members.isAdmin': true,
       },
       {
-        sort: ['title'],
+        sort: { sort: 1 /* boards default sorting */ },
       },
     );
   },
@@ -83,6 +85,7 @@ BlazeComponent.extendComponent({
       this.accountSetting.set('account-setting' === targetID);
       this.announcementSetting.set('announcement-setting' === targetID);
       this.layoutSetting.set('layout-setting' === targetID);
+      this.webhookSetting.set('webhook-setting' === targetID);
     }
   },
 
@@ -168,20 +171,12 @@ BlazeComponent.extendComponent({
     const displayAuthenticationMethod =
       $('input[name=displayAuthenticationMethod]:checked').val() === 'true';
     const defaultAuthenticationMethod = $('#defaultAuthenticationMethod').val();
-    const customHTMLafterBodyStart = $('#customHTMLafterBodyStart')
-      .val()
-      .trim();
-    const customHTMLbeforeBodyEnd = $('#customHTMLbeforeBodyEnd')
-      .val()
-      .trim();
 
     try {
       Settings.update(Settings.findOne()._id, {
         $set: {
           productName,
           hideLogo: hideLogoChange,
-          customHTMLafterBodyStart,
-          customHTMLbeforeBodyEnd,
           displayAuthenticationMethod,
           defaultAuthenticationMethod,
         },

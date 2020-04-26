@@ -62,8 +62,14 @@ Activities.helpers({
   //},
 });
 
+Activities.before.update((userId, doc, fieldNames, modifier) => {
+  modifier.$set = modifier.$set || {};
+  modifier.$set.modifiedAt = new Date();
+});
+
 Activities.before.insert((userId, doc) => {
   doc.createdAt = new Date();
+  doc.modifiedAt = doc.createdAt;
 });
 
 Activities.after.insert((userId, doc) => {
@@ -102,7 +108,7 @@ if (Meteor.isServer) {
     let participants = [];
     let watchers = [];
     let title = 'act-activity-notify';
-    let board = null;
+    const board = Boards.findOne(activity.boardId);
     const description = `act-${activity.activityType}`;
     const params = {
       activityId: activity._id,
@@ -116,8 +122,11 @@ if (Meteor.isServer) {
       params.userId = activity.userId;
     }
     if (activity.boardId) {
-      board = activity.board();
-      params.board = board.title;
+      if (board.title.length > 0) {
+        params.board = board.title;
+      } else {
+        params.board = '';
+      }
       title = 'act-withBoardTitle';
       params.url = board.absoluteUrl();
       params.boardId = activity.boardId;
@@ -174,25 +183,34 @@ if (Meteor.isServer) {
       const comment = activity.comment();
       params.comment = comment.text;
       if (board) {
-        const atUser = /(?:^|>|\b|\s)@(\S+)(?:\s|$|<|\b)/g;
         const comment = params.comment;
-        if (comment.match(atUser)) {
-          const commenter = params.user;
-          while (atUser.exec(comment)) {
-            const username = RegExp.$1;
-            if (commenter === username) {
-              // it's person at himself, ignore it?
-              continue;
-            }
-            const user = Users.findOne(username) || Users.findOne({ username });
-            const uid = user && user._id;
-            params.atUsername = username;
-            params.atEmails = user.emails;
-            if (board.hasMember(uid)) {
-              title = 'act-atUserComment';
-              watchers = _.union(watchers, [uid]);
-            }
+        const knownUsers = board.members.map(member => {
+          const u = Users.findOne(member.userId);
+          if (u) {
+            member.username = u.username;
+            member.emails = u.emails;
           }
+          return member;
+        });
+        const mentionRegex = /\B@(?:(?:"([\w.\s]*)")|([\w.]+))/gi; // including space in username
+        let currentMention;
+        while ((currentMention = mentionRegex.exec(comment)) !== null) {
+          /*eslint no-unused-vars: ["error", { "varsIgnorePattern": "[iI]gnored" }]*/
+          const [ignored, quoteduser, simple] = currentMention;
+          const username = quoteduser || simple;
+          if (username === params.user) {
+            // ignore commenter mention himself?
+            continue;
+          }
+          const atUser = _.findWhere(knownUsers, { username });
+          if (!atUser) {
+            continue;
+          }
+          const uid = atUser.userId;
+          params.atUsername = username;
+          params.atEmails = atUser.emails;
+          title = 'act-atUserComment';
+          watchers = _.union(watchers, [uid]);
         }
       }
       params.commentId = comment._id;
@@ -227,8 +245,8 @@ if (Meteor.isServer) {
       (!activity.timeKey || activity.timeKey === 'dueAt') &&
       activity.timeValue
     ) {
-      // due time reminder
-      title = 'act-withDue';
+      // due time reminder, if it doesn't have old value, it's a brand new set, need some differentiation
+      title = activity.timeOldValue ? 'act-withDue' : 'act-newDue';
     }
     ['timeValue', 'timeOldValue'].forEach(key => {
       // copy time related keys & values to params
@@ -264,17 +282,31 @@ if (Meteor.isServer) {
       );
     }
     Notifications.getUsers(watchers).forEach(user => {
-      Notifications.notify(user, title, description, params);
+      // don't notify a user of their own behavior
+      if (user._id !== userId) {
+        Notifications.notify(user, title, description, params);
+      }
     });
 
     const integrations = Integrations.find({
-      boardId: board._id,
-      type: 'outgoing-webhooks',
+      boardId: { $in: [board._id, Integrations.Const.GLOBAL_WEBHOOK_ID] },
+      // type: 'outgoing-webhooks', // all types
       enabled: true,
       activities: { $in: [description, 'all'] },
     }).fetch();
     if (integrations.length > 0) {
-      Meteor.call('outgoingWebhooks', integrations, description, params);
+      params.watchers = watchers;
+      integrations.forEach(integration => {
+        Meteor.call(
+          'outgoingWebhooks',
+          integration,
+          description,
+          params,
+          () => {
+            return;
+          },
+        );
+      });
     }
   });
 }

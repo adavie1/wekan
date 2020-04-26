@@ -3,10 +3,20 @@ DatePicker = BlazeComponent.extendComponent({
     return 'datepicker';
   },
 
-  onCreated() {
+  onCreated(defaultTime = '1970-01-01 08:00:00') {
     this.error = new ReactiveVar('');
     this.card = this.data();
     this.date = new ReactiveVar(moment.invalid());
+    this.defaultTime = defaultTime;
+  },
+
+  startDayOfWeek() {
+    const currentUser = Meteor.user();
+    if (currentUser) {
+      return currentUser.getStartDayOfWeek();
+    } else {
+      return 1;
+    }
   },
 
   onRendered() {
@@ -15,13 +25,22 @@ DatePicker = BlazeComponent.extendComponent({
         todayHighlight: true,
         todayBtn: 'linked',
         language: TAPi18n.getLanguage(),
+        weekStart: this.startDayOfWeek(),
       })
       .on(
         'changeDate',
         function(evt) {
           this.find('#date').value = moment(evt.date).format('L');
           this.error.set('');
-          this.find('#time').focus();
+          const timeInput = this.find('#time');
+          timeInput.focus();
+          if (!timeInput.value) {
+            const currentHour = evt.date.getHours();
+            const defaultMoment = moment(
+              currentHour > 0 ? evt.date : this.defaultTime,
+            ); // default to 8:00 am local time
+            timeInput.value = defaultMoment.format('LT');
+          }
         }.bind(this),
       );
 

@@ -4,6 +4,10 @@ BlazeComponent.extendComponent({
   events() {
     return [
       {
+        'submit .js-list-filter'(evt) {
+          evt.preventDefault();
+          Filter.lists.set(this.find('.js-list-filter input').value.trim());
+        },
         'click .js-toggle-label-filter'(evt) {
           evt.preventDefault();
           Filter.labelIds.toggle(this.currentData()._id);
@@ -12,6 +16,11 @@ BlazeComponent.extendComponent({
         'click .js-toggle-member-filter'(evt) {
           evt.preventDefault();
           Filter.members.toggle(this.currentData()._id);
+          Filter.resetExceptions();
+        },
+        'click .js-toggle-assignee-filter'(evt) {
+          evt.preventDefault();
+          Filter.assignees.toggle(this.currentData()._id);
           Filter.resetExceptions();
         },
         'click .js-toggle-archive-filter'(evt) {

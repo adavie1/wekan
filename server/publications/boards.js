@@ -18,7 +18,7 @@ Meteor.publish('boards', function() {
       archived: false,
       $or: [
         {
-          _id: { $in: starredBoards },
+          // _id: { $in: starredBoards },  // Commented out, to get a list of all public boards
           permission: 'public',
         },
         { members: { $elemMatch: { userId, isActive: true } } },
@@ -35,7 +35,9 @@ Meteor.publish('boards', function() {
         members: 1,
         permission: 1,
         type: 1,
+        sort: 1,
       },
+      sort: { sort: 1 /* boards default sorting */ },
     },
   );
 });
@@ -61,6 +63,7 @@ Meteor.publish('archivedBoards', function() {
         slug: 1,
         title: 1,
       },
+      sort: { sort: 1 /* boards default sorting */ },
     },
   );
 });
@@ -90,7 +93,7 @@ Meteor.publishRelations('board', function(boardId, isArchived) {
         $or,
         // Sort required to ensure oplog usage
       },
-      { limit: 1, sort: { _id: 1 } },
+      { limit: 1, sort: { sort: 1 /* boards default sorting */ } },
     ),
     function(boardId, board) {
       this.cursor(Lists.find({ boardId, archived: isArchived }));
@@ -138,7 +141,7 @@ Meteor.publishRelations('board', function(boardId, isArchived) {
       parentCards.selector = _ids => ({ parentId: _ids });
       const boards = this.join(Boards);
       const subCards = this.join(Cards);
-      subCards.selector = () => ({ archived: isArchived });
+      subCards.selector = _ids => ({ _id: _ids, archived: isArchived });
 
       this.cursor(
         Cards.find({
@@ -148,7 +151,7 @@ Meteor.publishRelations('board', function(boardId, isArchived) {
         function(cardId, card) {
           if (card.type === 'cardType-linkedCard') {
             const impCardId = card.linkedId;
-            subCards.push(impCardId);
+            subCards.push(impCardId); // GitHub issue #2688 and #2693
             cardComments.push(impCardId);
             attachments.push(impCardId);
             checklists.push(impCardId);
@@ -192,6 +195,7 @@ Meteor.publishRelations('board', function(boardId, isArchived) {
                 username: 1,
                 'profile.fullname': 1,
                 'profile.avatarUrl': 1,
+                'profile.initials': 1,
               },
             },
           ),

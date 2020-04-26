@@ -1,5 +1,5 @@
 const subManager = new SubsManager();
-const { calculateIndexData, enableClickOnTouch } = Utils;
+const { calculateIndexData } = Utils;
 
 let cardColors;
 Meteor.startup(() => {
@@ -38,6 +38,37 @@ BlazeComponent.extendComponent({
     Meteor.subscribe('unsaved-edits');
   },
 
+  voteState() {
+    const card = this.currentData();
+    const userId = Meteor.userId();
+    let state;
+    if (card.vote) {
+      if (card.vote.positive) {
+        state = _.contains(card.vote.positive, userId);
+        if (state === true) return true;
+      }
+      if (card.vote.negative) {
+        state = _.contains(card.vote.negative, userId);
+        if (state === true) return false;
+      }
+    }
+    return null;
+  },
+  votePublic() {
+    const card = this.currentData();
+    if (card.vote) return card.vote.public;
+    return null;
+  },
+  voteCountPositive() {
+    const card = this.currentData();
+    if (card.vote && card.vote.positive) return card.vote.positive.length;
+    return null;
+  },
+  voteCountNegative() {
+    const card = this.currentData();
+    if (card.vote && card.vote.negative) return card.vote.negative.length;
+    return null;
+  },
   isWatching() {
     const card = this.currentData();
     return card.findWatcher(Meteor.userId());
@@ -51,7 +82,8 @@ BlazeComponent.extendComponent({
     return (
       Meteor.user() &&
       Meteor.user().isBoardMember() &&
-      !Meteor.user().isCommentOnly()
+      !Meteor.user().isCommentOnly() &&
+      !Meteor.user().isWorker()
     );
   },
 
@@ -121,11 +153,6 @@ BlazeComponent.extendComponent({
       // Send Webhook but not create Activities records ---
       const card = this.currentData();
       const userId = Meteor.userId();
-      //console.log(`userId: ${userId}`);
-      //console.log(`cardId: ${card._id}`);
-      //console.log(`boardId: ${card.boardId}`);
-      //console.log(`listId: ${card.listId}`);
-      //console.log(`swimlaneId: ${card.swimlaneId}`);
       const params = {
         userId,
         cardId: card._id,
@@ -134,16 +161,25 @@ BlazeComponent.extendComponent({
         user: Meteor.user().username,
         url: '',
       };
-      //console.log('looking for integrations...');
+
       const integrations = Integrations.find({
-        boardId: card.boardId,
-        type: 'outgoing-webhooks',
+        boardId: { $in: [card.boardId, Integrations.Const.GLOBAL_WEBHOOK_ID] },
         enabled: true,
         activities: { $in: ['CardDetailsRendered', 'all'] },
       }).fetch();
-      //console.log(`Investigation length: ${integrations.length}`);
+
       if (integrations.length > 0) {
-        Meteor.call('outgoingWebhooks', integrations, 'CardSelected', params);
+        integrations.forEach(integration => {
+          Meteor.call(
+            'outgoingWebhooks',
+            integration,
+            'CardSelected',
+            params,
+            () => {
+              return;
+            },
+          );
+        });
       }
       //-------------
     }
@@ -195,9 +231,6 @@ BlazeComponent.extendComponent({
       },
     });
 
-    // ugly touch event hotfix
-    enableClickOnTouch('.card-checklist-items .js-checklist');
-
     const $subtasksDom = this.$('.card-subtasks-items');
 
     $subtasksDom.sortable({
@@ -233,20 +266,18 @@ BlazeComponent.extendComponent({
       },
     });
 
-    // ugly touch event hotfix
-    enableClickOnTouch('.card-subtasks-items .js-subtasks');
-
     function userIsMember() {
       return Meteor.user() && Meteor.user().isBoardMember();
     }
 
     // Disable sorting if the current user is not a board member
     this.autorun(() => {
-      if ($checklistsDom.data('sortable')) {
-        $checklistsDom.sortable('option', 'disabled', !userIsMember());
+      const disabled = !userIsMember() || Utils.isMiniScreen();
+      if ($checklistsDom.data('uiSortable') || $checklistsDom.data('sortable')) {
+        $checklistsDom.sortable('option', 'disabled', disabled);
       }
-      if ($subtasksDom.data('sortable')) {
-        $subtasksDom.sortable('option', 'disabled', !userIsMember());
+      if ($subtasksDom.data('uiSortable') || $subtasksDom.data('sortable')) {
+        $subtasksDom.sortable('option', 'disabled', disabled);
       }
     });
   },
@@ -274,6 +305,29 @@ BlazeComponent.extendComponent({
         'click .js-close-card-details'() {
           Utils.goBoardId(this.data().boardId);
         },
+        'click .js-copy-link'() {
+          StringToCopyElement = document.getElementById('cardURL_copy');
+          StringToCopyElement.select();
+          if (document.execCommand('copy')) {
+            StringToCopyElement.blur();
+          } else {
+            document.getElementById('cardURL_copy').selectionStart = 0;
+            document.getElementById('cardURL_copy').selectionEnd = 999;
+            document.execCommand('copy');
+            if (window.getSelection) {
+              if (window.getSelection().empty) {
+                // Chrome
+                window.getSelection().empty();
+              } else if (window.getSelection().removeAllRanges) {
+                // Firefox
+                window.getSelection().removeAllRanges();
+              }
+            } else if (document.selection) {
+              // IE?
+              document.selection.empty();
+            }
+          }
+        },
         'click .js-open-card-details-menu': Popup.open('cardDetailsActions'),
         'submit .js-card-description'(event) {
           event.preventDefault();
@@ -287,6 +341,8 @@ BlazeComponent.extendComponent({
             .trim();
           if (title) {
             this.data().setTitle(title);
+          } else {
+            this.data().setTitle('');
           }
         },
         'submit .js-card-details-assigner'(event) {
@@ -296,6 +352,8 @@ BlazeComponent.extendComponent({
             .trim();
           if (assigner) {
             this.data().setAssignedBy(assigner);
+          } else {
+            this.data().setAssignedBy('');
           }
         },
         'submit .js-card-details-requester'(event) {
@@ -305,15 +363,24 @@ BlazeComponent.extendComponent({
             .trim();
           if (requester) {
             this.data().setRequestedBy(requester);
+          } else {
+            this.data().setRequestedBy('');
           }
+        },
+        'click .js-go-to-linked-card'() {
+          Utils.goCardId(this.data().linkedId);
         },
         'click .js-member': Popup.open('cardMember'),
         'click .js-add-members': Popup.open('cardMembers'),
+        'click .js-assignee': Popup.open('cardAssignee'),
+        'click .js-add-assignees': Popup.open('cardAssignees'),
         'click .js-add-labels': Popup.open('cardLabels'),
         'click .js-received-date': Popup.open('editCardReceivedDate'),
         'click .js-start-date': Popup.open('editCardStartDate'),
         'click .js-due-date': Popup.open('editCardDueDate'),
         'click .js-end-date': Popup.open('editCardEndDate'),
+        'click .js-show-positive-votes': Popup.open('positiveVoteMembers'),
+        'click .js-show-negative-votes': Popup.open('negativeVoteMembers'),
         'mouseenter .js-card-details'() {
           const parentComponent = this.parentComponent().parentComponent();
           //on mobile view parent is Board, not BoardBody.
@@ -321,13 +388,154 @@ BlazeComponent.extendComponent({
           parentComponent.showOverlay.set(true);
           parentComponent.mouseHasEnterCardDetails = true;
         },
+        'mousedown .js-card-details'() {
+          Session.set('cardDetailsIsDragging', false);
+          Session.set('cardDetailsIsMouseDown', true);
+        },
+        'mousemove .js-card-details'() {
+          if (Session.get('cardDetailsIsMouseDown')) {
+            Session.set('cardDetailsIsDragging', true);
+          }
+        },
+        'mouseup .js-card-details'() {
+          Session.set('cardDetailsIsDragging', false);
+          Session.set('cardDetailsIsMouseDown', false);
+        },
         'click #toggleButton'() {
           Meteor.call('toggleSystemMessages');
+        },
+        'click .js-vote'(e) {
+          const forIt = $(e.target).hasClass('js-vote-positive');
+          let newState = null;
+          if (
+            this.voteState() === null ||
+            (this.voteState() === false && forIt) ||
+            (this.voteState() === true && !forIt)
+          ) {
+            newState = forIt;
+          }
+          this.data().setVote(Meteor.userId(), newState);
         },
       },
     ];
   },
 }).register('cardDetails');
+
+Template.cardDetails.helpers({
+  userData() {
+    // We need to handle a special case for the search results provided by the
+    // `matteodem:easy-search` package. Since these results gets published in a
+    // separate collection, and not in the standard Meteor.Users collection as
+    // expected, we use a component parameter ("property") to distinguish the
+    // two cases.
+    const userCollection = this.esSearch ? ESSearchResults : Users;
+    return userCollection.findOne(this.userId, {
+      fields: {
+        profile: 1,
+        username: 1,
+      },
+    });
+  },
+
+  receivedSelected() {
+    if (this.getReceived().length === 0) {
+      return false;
+    } else {
+      return true;
+    }
+  },
+
+  startSelected() {
+    if (this.getStart().length === 0) {
+      return false;
+    } else {
+      return true;
+    }
+  },
+
+  endSelected() {
+    if (this.getEnd().length === 0) {
+      return false;
+    } else {
+      return true;
+    }
+  },
+
+  dueSelected() {
+    if (this.getDue().length === 0) {
+      return false;
+    } else {
+      return true;
+    }
+  },
+
+  memberSelected() {
+    if (this.getMembers().length === 0) {
+      return false;
+    } else {
+      return true;
+    }
+  },
+
+  labelSelected() {
+    if (this.getLabels().length === 0) {
+      return false;
+    } else {
+      return true;
+    }
+  },
+
+  assigneeSelected() {
+    if (this.getAssignees().length === 0) {
+      return false;
+    } else {
+      return true;
+    }
+  },
+
+  requestBySelected() {
+    if (this.getRequestBy().length === 0) {
+      return false;
+    } else {
+      return true;
+    }
+  },
+
+  assigneeBySelected() {
+    if (this.getAssigneeBy().length === 0) {
+      return false;
+    } else {
+      return true;
+    }
+  },
+
+  memberType() {
+    const user = Users.findOne(this.userId);
+    return user && user.isBoardAdmin() ? 'admin' : 'normal';
+  },
+
+  presenceStatusClassName() {
+    const user = Users.findOne(this.userId);
+    const userPresence = presences.findOne({ userId: this.userId });
+    if (user && user.isInvitedTo(Session.get('currentBoard'))) return 'pending';
+    else if (!userPresence) return 'disconnected';
+    else if (Session.equals('currentBoard', userPresence.state.currentBoardId))
+      return 'active';
+    else return 'idle';
+  },
+});
+
+Template.userAvatarAssigneeInitials.helpers({
+  initials() {
+    const user = Users.findOne(this.userId);
+    return user && user.getInitials();
+  },
+
+  viewPortWidth() {
+    const user = Users.findOne(this.userId);
+    return ((user && user.getInitials().length) || 1) * 12;
+  },
+});
 
 // We extends the normal InlinedForm component to support UnsavedEdits draft
 // feature.
@@ -386,8 +594,10 @@ Template.cardDetailsActionsPopup.helpers({
 
 Template.cardDetailsActionsPopup.events({
   'click .js-members': Popup.open('cardMembers'),
+  'click .js-assignees': Popup.open('cardAssignees'),
   'click .js-labels': Popup.open('cardLabels'),
   'click .js-attachments': Popup.open('cardAttachments'),
+  'click .js-start-voting': Popup.open('cardStartVoting'),
   'click .js-custom-fields': Popup.open('cardCustomFields'),
   'click .js-received-date': Popup.open('editCardReceivedDate'),
   'click .js-start-date': Popup.open('editCardStartDate'),
@@ -398,6 +608,11 @@ Template.cardDetailsActionsPopup.events({
   'click .js-copy-card': Popup.open('copyCard'),
   'click .js-copy-checklist-cards': Popup.open('copyChecklistToManyCards'),
   'click .js-set-card-color': Popup.open('setCardColor'),
+  'click .js-cancel-voting'(event) {
+    event.preventDefault();
+    this.unsetVote();
+    Popup.close();
+  },
   'click .js-move-card-to-top'(event) {
     event.preventDefault();
     const minOrder = _.min(
@@ -500,7 +715,7 @@ BlazeComponent.extendComponent({
         _id: { $ne: Meteor.user().getTemplatesBoardId() },
       },
       {
-        sort: ['title'],
+        sort: { sort: 1 /* boards default sorting */ },
       },
     );
     return boards;
@@ -676,7 +891,7 @@ BlazeComponent.extendComponent({
         },
       },
       {
-        sort: ['title'],
+        sort: { sort: 1 /* boards default sorting */ },
       },
     );
     return boards;
@@ -773,11 +988,43 @@ BlazeComponent.extendComponent({
   },
 }).register('cardMorePopup');
 
+BlazeComponent.extendComponent({
+  onCreated() {
+    this.currentCard = this.currentData();
+    this.voteQuestion = new ReactiveVar(this.currentCard.voteQuestion);
+  },
+
+  events() {
+    return [
+      {
+        'submit .edit-vote-question'(evt) {
+          evt.preventDefault();
+          const voteQuestion = evt.target.vote.value;
+          const publicVote = $('#vote-public').hasClass('is-checked');
+          this.currentCard.setVoteQuestion(voteQuestion, publicVote);
+          Popup.close();
+        },
+        'click a.js-toggle-vote-public'(event) {
+          event.preventDefault();
+          $('#vote-public').toggleClass('is-checked');
+        },
+      },
+    ];
+  },
+}).register('cardStartVotingPopup');
+
 // Close the card details pane by pressing escape
 EscapeActions.register(
   'detailsPane',
   () => {
-    Utils.goBoardId(Session.get('currentBoard'));
+    if (Session.get('cardDetailsIsDragging')) {
+      // Reset dragging status as the mouse landed outside the cardDetails template area and this will prevent a mousedown event from firing
+      Session.set('cardDetailsIsDragging', false);
+      Session.set('cardDetailsIsMouseDown', false);
+    } else {
+      // Prevent close card when the user is selecting text and moves the mouse cursor outside the card detail area
+      Utils.goBoardId(Session.get('currentBoard'));
+    }
   },
   () => {
     return !Session.equals('currentCard', null);
@@ -786,3 +1033,76 @@ EscapeActions.register(
     noClickEscapeOn: '.js-card-details,.board-sidebar,#header',
   },
 );
+
+Template.cardAssigneesPopup.events({
+  'click .js-select-assignee'(event) {
+    const card = Cards.findOne(Session.get('currentCard'));
+    const assigneeId = this.userId;
+    card.toggleAssignee(assigneeId);
+    event.preventDefault();
+  },
+});
+
+Template.cardAssigneesPopup.helpers({
+  isCardAssignee() {
+    const card = Template.parentData();
+    const cardAssignees = card.getAssignees();
+
+    return _.contains(cardAssignees, this.userId);
+  },
+
+  user() {
+    return Users.findOne(this.userId);
+  },
+});
+
+Template.cardAssigneePopup.helpers({
+  userData() {
+    // We need to handle a special case for the search results provided by the
+    // `matteodem:easy-search` package. Since these results gets published in a
+    // separate collection, and not in the standard Meteor.Users collection as
+    // expected, we use a component parameter ("property") to distinguish the
+    // two cases.
+    const userCollection = this.esSearch ? ESSearchResults : Users;
+    return userCollection.findOne(this.userId, {
+      fields: {
+        profile: 1,
+        username: 1,
+      },
+    });
+  },
+
+  memberType() {
+    const user = Users.findOne(this.userId);
+    return user && user.isBoardAdmin() ? 'admin' : 'normal';
+  },
+
+  presenceStatusClassName() {
+    const user = Users.findOne(this.userId);
+    const userPresence = presences.findOne({ userId: this.userId });
+    if (user && user.isInvitedTo(Session.get('currentBoard'))) return 'pending';
+    else if (!userPresence) return 'disconnected';
+    else if (Session.equals('currentBoard', userPresence.state.currentBoardId))
+      return 'active';
+    else return 'idle';
+  },
+
+  isCardAssignee() {
+    const card = Template.parentData();
+    const cardAssignees = card.getAssignees();
+
+    return _.contains(cardAssignees, this.userId);
+  },
+
+  user() {
+    return Users.findOne(this.userId);
+  },
+});
+
+Template.cardAssigneePopup.events({
+  'click .js-remove-assignee'() {
+    Cards.findOne(this.cardId).unassignAssignee(this.userId);
+    Popup.close();
+  },
+  'click .js-edit-profile': Popup.open('editProfile'),
+});
