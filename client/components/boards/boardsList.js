@@ -1,5 +1,5 @@
 const subManager = new SubsManager();
-const { calculateIndex } = Utils;
+const { calculateIndex, enableClickOnTouch } = Utils;
 
 Template.boardListHeaderBar.events({
   'click .js-open-archived-board'() {
@@ -25,11 +25,6 @@ BlazeComponent.extendComponent({
   },
 
   onRendered() {
-    const self = this;
-    function userIsAllowedToMove() {
-      return Meteor.user();
-    }
-
     const itemsSelector = '.js-board:not(.placeholder)';
 
     const $boards = this.$('.js-boards');
@@ -68,14 +63,21 @@ BlazeComponent.extendComponent({
       },
     });
 
+    // ugly touch event hotfix
+    enableClickOnTouch(itemsSelector);
+
     // Disable drag-dropping if the current user is not a board member or is comment only
     this.autorun(() => {
-      $boards.sortable('option', 'disabled', !userIsAllowedToMove());
+      if (Utils.isMiniScreen()) {
+        $boards.sortable({
+          handle: '.board-handle',
+        });
+      }
     });
   },
 
   boards() {
-    let query = {
+    const query = {
       archived: false,
       type: 'board',
     };

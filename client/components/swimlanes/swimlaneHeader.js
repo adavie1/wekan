@@ -1,5 +1,3 @@
-import { Cookies } from 'meteor/ostrio:cookies';
-const cookies = new Cookies();
 const { calculateIndexData } = Utils;
 
 let swimlaneColors;
@@ -35,11 +33,17 @@ Template.swimlaneHeader.helpers({
     currentUser = Meteor.user();
     if (currentUser) {
       return (currentUser.profile || {}).showDesktopDragHandles;
-    } else if (cookies.has('showDesktopDragHandles')) {
+    } else if (window.localStorage.getItem('showDesktopDragHandles')) {
       return true;
     } else {
       return false;
     }
+  },
+});
+
+Template.swimlaneFixedHeader.helpers({
+  isBoardAdmin() {
+    return Meteor.user().isBoardAdmin();
   },
 });
 
@@ -49,6 +53,12 @@ Template.swimlaneActionPopup.events({
     event.preventDefault();
     this.archive();
     Popup.close();
+  },
+});
+
+Template.swimlaneActionPopup.helpers({
+  isCommentOnly() {
+    return Meteor.user().isCommentOnly();
   },
 });
 

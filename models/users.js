@@ -95,7 +95,7 @@ Users.attachSchema(
       autoValue() {
         if (this.isInsert && !this.isSet) {
           return {
-            boardView: 'board-view-lists',
+            boardView: 'board-view-swimlanes',
           };
         }
       },
@@ -124,6 +124,13 @@ Users.attachSchema(
     'profile.showDesktopDragHandles': {
       /**
        * does the user want to hide system messages?
+       */
+      type: Boolean,
+      optional: true,
+    },
+    'profile.hideCheckedItems': {
+      /**
+       * does the user want to hide checked checklist items?
        */
       type: Boolean,
       optional: true,
@@ -218,8 +225,8 @@ Users.attachSchema(
       type: String,
       optional: true,
       allowedValues: [
-        'board-view-lists',
         'board-view-swimlanes',
+        'board-view-lists',
         'board-view-cal',
       ],
     },
@@ -483,6 +490,11 @@ Users.helpers({
     return profile.showDesktopDragHandles || false;
   },
 
+  hasHideCheckedItems() {
+    const profile = this.profile || {};
+    return profile.hideCheckedItems || false;
+  },
+
   hasHiddenSystemMessages() {
     const profile = this.profile || {};
     return profile.hiddenSystemMessages || false;
@@ -530,8 +542,11 @@ Users.helpers({
 
   getStartDayOfWeek() {
     const profile = this.profile || {};
-    // default is 'Monday' (1)
-    return profile.startDayOfWeek ?? 1;
+    if (typeof profile.startDayOfWeek === 'undefined') {
+      // default is 'Monday' (1)
+      return 1;
+    }
+    return profile.startDayOfWeek;
   },
 
   getTemplatesBoardId() {
@@ -601,10 +616,28 @@ Users.mutations({
       },
     };
   },
+
+  setName(value) {
+    return {
+      $set: {
+        'profile.fullname': value,
+      },
+    };
+  },
+
   toggleDesktopHandles(value = false) {
     return {
       $set: {
         'profile.showDesktopDragHandles': !value,
+      },
+    };
+  },
+
+  toggleHideCheckedItems() {
+    const value = this.hasHideCheckedItems();
+    return {
+      $set: {
+        'profile.hideCheckedItems': !value,
       },
     };
   },
@@ -687,6 +720,10 @@ Meteor.methods({
     const user = Meteor.user();
     user.toggleDesktopHandles(user.hasShowDesktopDragHandles());
   },
+  toggleHideCheckedItems() {
+    const user = Meteor.user();
+    user.toggleHideCheckedItems();
+  },
   toggleSystemMessages() {
     const user = Meteor.user();
     user.toggleSystem(user.hasHiddenSystemMessages());
@@ -724,7 +761,6 @@ if (Meteor.isServer) {
           throw new Meteor.Error('email-already-taken');
         } else {
           Accounts.createUser({
-            fullname,
             username,
             password,
             isAdmin,
@@ -732,6 +768,12 @@ if (Meteor.isServer) {
             email: email.toLowerCase(),
             from: 'admin',
           });
+          user = Users.findOne(username) || Users.findOne({ username });
+          if (user) {
+            Users.update(user._id, {
+              $set: { 'profile.fullname': fullname },
+            });
+          }
         }
       }
     },
@@ -877,6 +919,16 @@ if (Meteor.isServer) {
       }
       return { username: user.username, email: user.emails[0].address };
     },
+    impersonate(userId) {
+      check(userId, String);
+
+      if (!Meteor.users.findOne(userId))
+        throw new Meteor.Error(404, 'User not found');
+      if (!Meteor.user().isAdmin)
+        throw new Meteor.Error(403, 'Permission denied');
+
+      this.setUserId(userId);
+    },
   });
   Accounts.onCreateUser((options, user) => {
     const userCount = Users.find().count();
@@ -900,7 +952,7 @@ if (Meteor.isServer) {
       user.profile = {
         initials,
         fullname: user.services.oidc.fullname,
-        boardView: 'board-view-lists',
+        boardView: 'board-view-swimlanes',
       };
       user.authenticationMethod = 'oauth2';
 
@@ -918,7 +970,8 @@ if (Meteor.isServer) {
       existingUser.profile = user.profile;
       existingUser.authenticationMethod = user.authenticationMethod;
 
-      Meteor.users.remove({ _id: existingUser._id }); // remove existing record
+      Meteor.users.remove({ _id: user._id });
+      Meteor.users.remove({ _id: existingUser._id }); // is going to be created again
       return existingUser;
     }
 
@@ -958,7 +1011,7 @@ if (Meteor.isServer) {
       );
     } else {
       user.profile = { icode: options.profile.invitationcode };
-      user.profile.boardView = 'board-view-lists';
+      user.profile.boardView = 'board-view-swimlanes';
 
       // Deletes the invitation code after the user was created successfully.
       setTimeout(
@@ -1072,6 +1125,7 @@ if (Meteor.isServer) {
     incrementBoards(_.difference(newIds, oldIds), +1);
   });
 
+  // Override getUserId so that we can TODO get the current userId
   const fakeUserId = new Meteor.EnvironmentVariable();
   const getUserId = CollectionHooks.getUserId;
   CollectionHooks.getUserId = () => {
@@ -1105,6 +1159,10 @@ if (Meteor.isServer) {
         });
         */
 
+        const Future = require('fibers/future');
+        const future1 = new Future();
+        const future2 = new Future();
+        const future3 = new Future();
         Boards.insert(
           {
             title: TAPi18n.__('templates'),
@@ -1132,6 +1190,7 @@ if (Meteor.isServer) {
                 Users.update(fakeUserId.get(), {
                   $set: { 'profile.cardTemplatesSwimlaneId': swimlaneId },
                 });
+                future1.return();
               },
             );
 
@@ -1149,6 +1208,7 @@ if (Meteor.isServer) {
                 Users.update(fakeUserId.get(), {
                   $set: { 'profile.listTemplatesSwimlaneId': swimlaneId },
                 });
+                future2.return();
               },
             );
 
@@ -1166,15 +1226,22 @@ if (Meteor.isServer) {
                 Users.update(fakeUserId.get(), {
                   $set: { 'profile.boardTemplatesSwimlaneId': swimlaneId },
                 });
+                future3.return();
               },
             );
           },
         );
+        // HACK
+        future1.wait();
+        future2.wait();
+        future3.wait();
       });
     });
   }
 
   Users.after.insert((userId, doc) => {
+    // HACK
+    doc = Users.findOne({ _id: doc._id });
     if (doc.createdThroughApi) {
       // The admin user should be able to create a user despite disabling registration because
       // it is two different things (registration and creation).
@@ -1237,6 +1304,25 @@ if (Meteor.isServer) {
       Authentication.checkLoggedIn(req.userId);
       const data = Meteor.users.findOne({ _id: req.userId });
       delete data.services;
+
+      // get all boards where the user is member of
+      let boards = Boards.find(
+        {
+          type: 'board',
+          'members.userId': req.userId,
+        },
+        {
+          fields: { _id: 1, members: 1 },
+        },
+      );
+      boards = boards.map(b => {
+        const u = b.members.find(m => m.userId === req.userId);
+        delete u.userId;
+        u.boardId = b._id;
+        return u;
+      });
+
+      data.boards = boards;
       JsonRoutes.sendResult(res, {
         code: 200,
         data,
@@ -1289,9 +1375,29 @@ if (Meteor.isServer) {
     try {
       Authentication.checkUserId(req.userId);
       const id = req.params.userId;
+
+      // get all boards where the user is member of
+      let boards = Boards.find(
+        {
+          type: 'board',
+          'members.userId': id,
+        },
+        {
+          fields: { _id: 1, members: 1 },
+        },
+      );
+      boards = boards.map(b => {
+        const u = b.members.find(m => m.userId === id);
+        delete u.userId;
+        u.boardId = b._id;
+        return u;
+      });
+
+      const user = Meteor.users.findOne({ _id: id });
+      user.boards = boards;
       JsonRoutes.sendResult(res, {
         code: 200,
-        data: Meteor.users.findOne({ _id: id }),
+        data: user,
       });
     } catch (error) {
       JsonRoutes.sendResult(res, {
@@ -1539,7 +1645,16 @@ if (Meteor.isServer) {
     try {
       Authentication.checkUserId(req.userId);
       const id = req.params.userId;
-      Meteor.users.remove({ _id: id });
+      // Delete is not enabled yet, because it does leave empty user avatars
+      // to boards: boards members, card members and assignees have
+      // empty users. See:
+      // - wekan/client/components/settings/peopleBody.jade deleteButton
+      // - wekan/client/components/settings/peopleBody.js deleteButton
+      // - wekan/client/components/sidebar/sidebar.js Popup.afterConfirm('removeMember'
+      //   that does now remove member from board, card members and assignees correctly,
+      //   but that should be used to remove user from all boards similarly
+      // - wekan/models/users.js Delete is not enabled
+      // Meteor.users.remove({ _id: id });
       JsonRoutes.sendResult(res, {
         code: 200,
         data: {

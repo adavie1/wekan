@@ -1,5 +1,3 @@
-import { Cookies } from 'meteor/ostrio:cookies';
-const cookies = new Cookies();
 const { calculateIndex } = Utils;
 
 function currentListIsInThisSwimlane(swimlaneId) {
@@ -23,8 +21,8 @@ function currentCardIsInThisList(listId, swimlaneId) {
       currentCard.listId === listId &&
       currentCard.swimlaneId === swimlaneId
     );
-  // Default view: board-view-lists
   else return currentCard && currentCard.listId === listId;
+
   // https://github.com/wekan/wekan/issues/1623
   // https://github.com/ChronikEwok/wekan/commit/cad9b20451bb6149bfb527a99b5001873b06c3de
   // TODO: In public board, if you would like to switch between List/Swimlane view, you could
@@ -102,7 +100,7 @@ function initSortable(boardComponent, $listsDom) {
     if (currentUser) {
       showDesktopDragHandles = (currentUser.profile || {})
         .showDesktopDragHandles;
-    } else if (cookies.has('showDesktopDragHandles')) {
+    } else if (window.localStorage.getItem('showDesktopDragHandles')) {
       showDesktopDragHandles = true;
     } else {
       showDesktopDragHandles = false;
@@ -124,7 +122,8 @@ function initSortable(boardComponent, $listsDom) {
         'option',
         'disabled',
         // Disable drag-dropping when user is not member/is worker
-        !userIsMember() || Meteor.user().isWorker(),
+        //!userIsMember() || Meteor.user().isWorker(),
+        !Meteor.user().isBoardAdmin(),
         // Not disable drag-dropping while in multi-selection mode
         // MultiSelection.isActive() || !userIsMember(),
       );
@@ -178,7 +177,7 @@ BlazeComponent.extendComponent({
           if (currentUser) {
             showDesktopDragHandles = (currentUser.profile || {})
               .showDesktopDragHandles;
-          } else if (cookies.has('showDesktopDragHandles')) {
+          } else if (window.localStorage.getItem('showDesktopDragHandles')) {
             showDesktopDragHandles = true;
           } else {
             showDesktopDragHandles = false;
@@ -269,19 +268,20 @@ Template.swimlane.helpers({
     currentUser = Meteor.user();
     if (currentUser) {
       return (currentUser.profile || {}).showDesktopDragHandles;
-    } else if (cookies.has('showDesktopDragHandles')) {
+    } else if (window.localStorage.getItem('showDesktopDragHandles')) {
       return true;
     } else {
       return false;
     }
   },
   canSeeAddList() {
-    return (
+    return Meteor.user().isBoardAdmin();
+    /*
       Meteor.user() &&
       Meteor.user().isBoardMember() &&
       !Meteor.user().isCommentOnly() &&
       !Meteor.user().isWorker()
-    );
+      */
   },
 });
 

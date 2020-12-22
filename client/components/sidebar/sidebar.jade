@@ -9,7 +9,7 @@ template(name="sidebar")
         a.board-header-btn.js-shortcuts
           i.fa.fa-keyboard-o
           span {{_ 'keyboard-shortcuts' }}
-      .sidebar-content.js-board-sidebar-content.js-perfect-scrollbar
+      .sidebar-content.js-board-sidebar-content
         //a.hide-btn.js-hide-sidebar
         //  i.fa.fa-navicon
         unless isDefaultView
@@ -230,6 +230,8 @@ template(name="chooseBoardSource")
       a(href="{{pathFor '/import/trello'}}") {{_ 'from-trello'}}
     li
       a(href="{{pathFor '/import/wekan'}}") {{_ 'from-wekan'}}
+    li
+      a(href="{{pathFor '/import/csv'}}") {{_ 'from-csv'}}
 
 template(name="archiveBoardPopup")
   p {{_ 'close-board-pop'}}
@@ -267,14 +269,16 @@ template(name="outgoingWebhooksPopup")
 
 template(name="boardMenuPopup")
   ul.pop-over-list
-    li
-      a.js-open-rules-view(title="{{_ 'rules'}}")
-        i.fa.fa-magic
-        | {{_ 'rules'}}
-    li
-      a.js-custom-fields
-        i.fa.fa-list-alt
-        | {{_ 'custom-fields'}}
+    if currentUser.isBoardAdmin
+      li
+        a.js-open-rules-view(title="{{_ 'rules'}}")
+          i.fa.fa-magic
+          | {{_ 'rules'}}
+    if currentUser.isBoardAdmin
+      li
+        a.js-custom-fields
+          i.fa.fa-list-alt
+          | {{_ 'custom-fields'}}
     li
       a.js-open-archives
         i.fa.fa-archive
@@ -295,14 +299,14 @@ template(name="boardMenuPopup")
           i.fa.fa-flag
           | {{_ 'language'}}
   unless isSandstorm
-    if currentUser.isBoardAdmin
-      hr
-      ul.pop-over-list
-        if withApi
-          li
-            a(href="{{exportUrl}}", download="{{exportFilename}}")
-              i.fa.fa-share-alt
-              | {{_ 'export-board'}}
+    hr
+    ul.pop-over-list
+      if withApi
+        li
+          a.js-export-board
+            i.fa.fa-share-alt
+            | {{_ 'export-board'}}
+      if currentUser.isBoardAdmin
         li
           a.js-outgoing-webhooks
             i.fa.fa-globe
@@ -315,7 +319,8 @@ template(name="boardMenuPopup")
           a.js-subtask-settings
             i.fa.fa-sitemap
             | {{_ 'subtask-settings'}}
-      unless currentBoard.isTemplatesBoard
+    unless currentBoard.isTemplatesBoard
+      if currentUser.isBoardAdmin
         hr
         ul.pop-over-list
           li
@@ -327,22 +332,22 @@ template(name="boardMenuPopup")
   if isSandstorm
     hr
     ul.pop-over-list
-      if withApi
+      if currentUser.isMember
         li
-          a(href="{{exportUrl}}", download="{{exportFilename}}")
+          a.js-export-board
             i.fa.fa-share-alt
-            i.fa.fa-sign-out
             | {{_ 'export-board'}}
-      li
-        a.js-import-board
-          i.fa.fa-share-alt
-          i.fa.fa-sign-in
-          | {{_ 'import-board-c'}}
-      li
-        a.js-archive-board
-          i.fa.fa-arrow-right
-          i.fa.fa-archive
-          | {{_ 'archive-board'}}
+        li
+          a.js-import-board
+            i.fa.fa-share-alt
+            i.fa.fa-sign-in
+            | {{_ 'import-board-c'}}
+      if currentUser.isBoardAdmin
+        li
+          a.js-archive-board
+            i.fa.fa-arrow-right
+            i.fa.fa-archive
+            | {{_ 'archive-board'}}
       li
         a.js-outgoing-webhooks
           i.fa.fa-globe
@@ -359,6 +364,25 @@ template(name="boardMenuPopup")
         a.js-subtask-settings
           i.fa.fa-sitemap
           | {{_ 'subtask-settings'}}
+
+template(name="exportBoard")
+  ul.pop-over-list
+    li
+      a.download-json-link(href="{{exportUrl}}", download="{{exportJsonFilename}}")
+        i.fa.fa-share-alt
+        | {{_ 'export-board-json'}}
+    li
+      a(href="{{exportCsvUrl}}", download="{{exportCsvFilename}}")
+        i.fa.fa-share-alt
+        | {{_ 'export-board-csv'}}
+    li
+      a(href="{{exportTsvUrl}}", download="{{exportTsvFilename}}")
+        i.fa.fa-share-alt
+        | {{_ 'export-board-tsv'}}
+    li
+      a.html-export-board
+        i.fa.fa-archive
+        | {{_ 'export-board-html'}}
 
 template(name="labelsWidget")
   .board-widget.board-widget-labels

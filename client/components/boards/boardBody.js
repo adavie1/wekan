@@ -1,5 +1,3 @@
-import { Cookies } from 'meteor/ostrio:cookies';
-const cookies = new Cookies();
 const subManager = new SubsManager();
 const { calculateIndex } = Utils;
 const swimlaneWhileSortingHeight = 150;
@@ -197,7 +195,7 @@ BlazeComponent.extendComponent({
       if (currentUser) {
         showDesktopDragHandles = (currentUser.profile || {})
           .showDesktopDragHandles;
-      } else if (cookies.has('showDesktopDragHandles')) {
+      } else if (window.localStorage.getItem('showDesktopDragHandles')) {
         showDesktopDragHandles = true;
       } else {
         showDesktopDragHandles = false;
@@ -213,7 +211,12 @@ BlazeComponent.extendComponent({
       }
 
       // Disable drag-dropping if the current user is not a board member
-      $swimlanesDom.sortable('option', 'disabled', !userIsMember());
+      //$swimlanesDom.sortable('option', 'disabled', !userIsMember());
+      $swimlanesDom.sortable(
+        'option',
+        'disabled',
+        !Meteor.user().isBoardAdmin(),
+      );
     });
 
     function userIsMember() {
@@ -237,7 +240,9 @@ BlazeComponent.extendComponent({
     if (currentUser) {
       return (currentUser.profile || {}).boardView === 'board-view-swimlanes';
     } else {
-      return cookies.get('boardView') === 'board-view-swimlanes';
+      return (
+        window.localStorage.getItem('boardView') === 'board-view-swimlanes'
+      );
     }
   },
 
@@ -246,7 +251,7 @@ BlazeComponent.extendComponent({
     if (currentUser) {
       return (currentUser.profile || {}).boardView === 'board-view-lists';
     } else {
-      return cookies.get('boardView') === 'board-view-lists';
+      return window.localStorage.getItem('boardView') === 'board-view-lists';
     }
   },
 
@@ -255,7 +260,7 @@ BlazeComponent.extendComponent({
     if (currentUser) {
       return (currentUser.profile || {}).boardView === 'board-view-cal';
     } else {
-      return cookies.get('boardView') === 'board-view-cal';
+      return window.localStorage.getItem('boardView') === 'board-view-cal';
     }
   },
 
@@ -323,7 +328,7 @@ BlazeComponent.extendComponent({
       header: {
         left: 'title   today prev,next',
         center:
-          'agendaDay,listDay,timelineDay agendaWeek,listWeek,timelineWeek month,timelineMonth timelineYear',
+          'agendaDay,listDay,timelineDay agendaWeek,listWeek,timelineWeek month,listMonth',
         right: '',
       },
       // height: 'parent', nope, doesn't work as the parent might be small
@@ -417,7 +422,7 @@ BlazeComponent.extendComponent({
     if (currentUser) {
       return (currentUser.profile || {}).boardView === 'board-view-cal';
     } else {
-      return cookies.get('boardView') === 'board-view-cal';
+      return window.localStorage.getItem('boardView') === 'board-view-cal';
     }
   },
 }).register('calendarView');

@@ -1,5 +1,3 @@
-import { Cookies } from 'meteor/ostrio:cookies';
-const cookies = new Cookies();
 Sidebar = null;
 
 const defaultView = 'home';
@@ -16,7 +14,7 @@ const viewTitles = {
 
 BlazeComponent.extendComponent({
   mixins() {
-    return [Mixins.InfiniteScrolling, Mixins.PerfectScrollbar];
+    return [Mixins.InfiniteScrolling];
   },
 
   onCreated() {
@@ -112,10 +110,12 @@ BlazeComponent.extendComponent({
           currentUser = Meteor.user();
           if (currentUser) {
             Meteor.call('toggleMinicardLabelText');
-          } else if (cookies.has('hiddenMinicardLabelText')) {
-            cookies.remove('hiddenMinicardLabelText');
+          } else if (window.localStorage.getItem('hiddenMinicardLabelText')) {
+            window.localStorage.removeItem('hiddenMinicardLabelText');
+            location.reload();
           } else {
-            cookies.set('hiddenMinicardLabelText', 'true');
+            window.localStorage.setItem('hiddenMinicardLabelText', 'true');
+            location.reload();
           }
         },
         'click .js-shortcuts'() {
@@ -133,7 +133,7 @@ Template.homeSidebar.helpers({
     currentUser = Meteor.user();
     if (currentUser) {
       return (currentUser.profile || {}).hiddenMinicardLabelText;
-    } else if (cookies.has('hiddenMinicardLabelText')) {
+    } else if (window.localStorage.getItem('hiddenMinicardLabelText')) {
       return true;
     } else {
       return false;
@@ -154,6 +154,9 @@ EscapeActions.register(
 Template.memberPopup.helpers({
   user() {
     return Users.findOne(this.userId);
+  },
+  isBoardAdmin() {
+    return Meteor.user().isBoardAdmin();
   },
   memberType() {
     const type = Users.findOne(this.userId).isBoardAdmin() ? 'admin' : 'normal';
@@ -213,6 +216,7 @@ Template.boardMenuPopup.events({
   'click .js-import-board': Popup.open('chooseBoardSource'),
   'click .js-subtask-settings': Popup.open('boardSubtaskSettings'),
   'click .js-card-settings': Popup.open('boardCardSettings'),
+  'click .js-export-board': Popup.open('exportBoard'),
 });
 
 Template.boardMenuPopup.onCreated(function() {
@@ -223,6 +227,9 @@ Template.boardMenuPopup.onCreated(function() {
 });
 
 Template.boardMenuPopup.helpers({
+  isBoardAdmin() {
+    return Meteor.user().isBoardAdmin();
+  },
   withApi() {
     return Template.instance().apiEnabled.get();
   },
@@ -248,10 +255,14 @@ Template.memberPopup.events({
   },
   'click .js-change-role': Popup.open('changePermissions'),
   'click .js-remove-member': Popup.afterConfirm('removeMember', function() {
+    // This works from removing member from board, card members and assignees.
     const boardId = Session.get('currentBoard');
     const memberId = this.userId;
     Cards.find({ boardId, members: memberId }).forEach(card => {
       card.unassignMember(memberId);
+    });
+    Cards.find({ boardId, assignees: memberId }).forEach(card => {
+      card.unassignAssignee(memberId);
     });
     Boards.findOne(boardId).removeMember(memberId);
     Popup.close();
@@ -292,6 +303,9 @@ Template.membersWidget.helpers({
     } else {
       return false;
     }
+  },
+  isBoardAdmin() {
+    return Meteor.user().isBoardAdmin();
   },
 });
 
@@ -405,9 +419,79 @@ BlazeComponent.extendComponent({
   },
 }).register('chooseBoardSourcePopup');
 
+BlazeComponent.extendComponent({
+  template() {
+    return 'exportBoard';
+  },
+  withApi() {
+    return Template.instance().apiEnabled.get();
+  },
+  exportUrl() {
+    const params = {
+      boardId: Session.get('currentBoard'),
+    };
+    const queryParams = {
+      authToken: Accounts._storedLoginToken(),
+    };
+    return FlowRouter.path('/api/boards/:boardId/export', params, queryParams);
+  },
+  exportCsvUrl() {
+    const params = {
+      boardId: Session.get('currentBoard'),
+    };
+    const queryParams = {
+      authToken: Accounts._storedLoginToken(),
+    };
+    return FlowRouter.path(
+      '/api/boards/:boardId/export/csv',
+      params,
+      queryParams,
+    );
+  },
+  exportTsvUrl() {
+    const params = {
+      boardId: Session.get('currentBoard'),
+    };
+    const queryParams = {
+      authToken: Accounts._storedLoginToken(),
+      delimiter: '\t',
+    };
+    return FlowRouter.path(
+      '/api/boards/:boardId/export/csv',
+      params,
+      queryParams,
+    );
+  },
+  exportJsonFilename() {
+    const boardId = Session.get('currentBoard');
+    return `wekan-export-board-${boardId}.json`;
+  },
+  exportCsvFilename() {
+    const boardId = Session.get('currentBoard');
+    return `wekan-export-board-${boardId}.csv`;
+  },
+  exportTsvFilename() {
+    const boardId = Session.get('currentBoard');
+    return `wekan-export-board-${boardId}.tsv`;
+  },
+}).register('exportBoardPopup');
+
+Template.exportBoard.events({
+  'click .html-export-board': async event => {
+    event.preventDefault();
+    await ExportHtml(Popup)();
+  },
+});
+
 Template.labelsWidget.events({
   'click .js-label': Popup.open('editLabel'),
   'click .js-add-label': Popup.open('createLabel'),
+});
+
+Template.labelsWidget.helpers({
+  isBoardAdmin() {
+    return Meteor.user().isBoardAdmin();
+  },
 });
 
 // Board members can assign people or labels by drag-dropping elements from the

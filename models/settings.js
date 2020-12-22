@@ -45,6 +45,30 @@ Settings.attachSchema(
       type: Boolean,
       optional: true,
     },
+    customLoginLogoImageUrl: {
+      type: String,
+      optional: true,
+    },
+    customLoginLogoLinkUrl: {
+      type: String,
+      optional: true,
+    },
+    textBelowCustomLoginLogo: {
+      type: String,
+      optional: true,
+    },
+    customTopLeftCornerLogoImageUrl: {
+      type: String,
+      optional: true,
+    },
+    customTopLeftCornerLogoLinkUrl: {
+      type: String,
+      optional: true,
+    },
+    customTopLeftCornerLogoHeight: {
+      type: String,
+      optional: true,
+    },
     createdAt: {
       type: Date,
       denyUpdate: true,
@@ -187,19 +211,26 @@ if (Meteor.isServer) {
   }
 
   function isLdapEnabled() {
-    return process.env.LDAP_ENABLE === 'true';
+    return (
+      process.env.LDAP_ENABLE === 'true' || process.env.LDAP_ENABLE === true
+    );
   }
 
   function isOauth2Enabled() {
-    return process.env.OAUTH2_ENABLED === 'true';
+    return (
+      process.env.OAUTH2_ENABLED === 'true' ||
+      process.env.OAUTH2_ENABLED === true
+    );
   }
 
   function isCasEnabled() {
-    return process.env.CAS_ENABLED === 'true';
+    return (
+      process.env.CAS_ENABLED === 'true' || process.env.CAS_ENABLED === true
+    );
   }
 
   function isApiEnabled() {
-    return process.env.WITH_API === 'true';
+    return process.env.WITH_API === 'true' || process.env.WITH_API === true;
   }
 
   Meteor.methods({
@@ -259,7 +290,7 @@ if (Meteor.isServer) {
         throw new Meteor.Error('invalid-user');
       }
       const user = Meteor.user();
-      if (!user.emails && !user.emails[0] && user.emails[0].address) {
+      if (!user.emails || !user.emails[0] || !user.emails[0].address) {
         throw new Meteor.Error('email-invalid');
       }
       this.unblock();

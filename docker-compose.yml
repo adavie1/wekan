@@ -13,13 +13,12 @@ version: '2'
 #       see https://github.com/wekan/wekan/wiki/Backup
 # 1) Stop Wekan:
 #      docker-compose stop
-# 2) Download new version:
-#      docker-compose pull wekan
-# 3) If you have more networks for VPN etc as described at bottom of
-#    this config, download for them too:
-#      docker-compose pull wekan2
+# 2) Remove old Wekan app (wekan-app only, not that wekan-db container that has all your data)
+#      docker rm wekan-app
+# 3) Get newest docker-compose.yml from https://github.com/wekan/wekan to have correct image,
+#    for example: "image: quay.io/wekan/wekan" or version tag "image: quay.io/wekan/wekan:v4.52"
 # 4) Start Wekan:
-#      docker-compose start
+#      docker-compose up -d
 #----------------------------------------------------------------------------------
 # ==== OPTIONAL: DEDICATED DOCKER USER ====
 # 1) Optionally create a dedicated user for Wekan, for example:
@@ -92,15 +91,18 @@ services:
   wekandb:
     #-------------------------------------------------------------------------------------
     # ==== MONGODB AND METEOR VERSION ====
-    # a) For Wekan Meteor 1.8.x version at master branch, use mongo 4.x
-    image: mongo:latest
-    # b) For Wekan Meteor 1.6.x version at devel branch.
-    # Only for Snap and Sandstorm while they are not upgraded yet to Meteor 1.8.x
-    #image: mongo:3.2.21
+    # a) mongodb latest, like 3.2 - 4.4 or newer https://hub.docker.com/_/mongo?tab=description
+    # 2020-12-03:
+    # - Mongo image copied from Docker Hub mongo:4.4.2-bionic to Quay
+    #   to avoid Docker Hub rate limits.
+    image: quay.io/wekan/mongo:4.4.2-bionic
     #-------------------------------------------------------------------------------------
     container_name: wekan-db
     restart: always
-    command: mongod --oplogSize 128
+    # command: mongod --oplogSize 128
+    # Syslog: mongod --syslog --oplogSize 128 --quiet
+    # Disable MongoDB logs:
+    command: mongod --logpath /dev/null --oplogSize 128 --quiet
     networks:
       - wekan-tier
     expose:
@@ -112,15 +114,12 @@ services:
   wekan:
     #-------------------------------------------------------------------------------------
     # ==== MONGODB AND METEOR VERSION ====
-    # NOTE: Quay is currently not updated, use Docker Hub image below c)
-    # a) For Wekan Meteor 1.8.x version at master branch,
-    #    using https://quay.io/wekan/wekan automatic builds
+    # a) Quay automatic builds do work, https://quay.io/wekan7wekan
     image: quay.io/wekan/wekan
-    # b) Using specific Meteor 1.6.x version tag:
-    # image: quay.io/wekan/wekan:v1.95
-    # c) Using Docker Hub automatic builds https://hub.docker.com/r/wekanteam/wekan
-    #image: wekanteam/wekan
-    # image: wekanteam/wekan:v2.99
+    # b) Using specific version tag:
+    # image: quay.io/wekan/wekan:v4.52
+    # c) Docker Hub builds are broken with error ENOMEM https://hub.docker.com/r/wekanteam/wekan
+    # image: wekanteam/wekan
     #-------------------------------------------------------------------------------------
     container_name: wekan-app
     restart: always
@@ -180,7 +179,7 @@ services:
       # that if you're using more than 1 instance of Wekan
       # (or any MeteorJS based tool) you're supposed to set
       # MONGO_OPLOG_URL as an environment variable.
-      # Without setting it, Meteor will perform a pull-and-diff
+      # Without setting it, Meteor will perform a poll-and-diff
       # update of it's dataset. With it, Meteor will update from
       # the OPLOG. See here
       #   https://blog.meteor.com/tuning-meteor-mongo-livedata-for-scalability-13fe9deb8908
@@ -239,11 +238,6 @@ services:
       # ==== RICH TEXT EDITOR IN CARD COMMENTS ====
       # https://github.com/wekan/wekan/pull/2560
       - RICHER_CARD_COMMENT_EDITOR=false
-      #---------------------------------------------------------------
-      # ==== MOUSE SCROLL ====
-      # https://github.com/wekan/wekan/issues/2949
-      - SCROLLINERTIA=0
-      - SCROLLAMOUNT=auto
       #---------------------------------------------------------------
       # ==== CARD OPENED, SEND WEBHOOK MESSAGE ====
       # https://github.com/wekan/wekan/issues/2518
@@ -326,6 +320,9 @@ services:
       # ==== Debug OIDC OAuth2 etc ====
       #- DEBUG=true
       #-----------------------------------------------------------------
+      # ==== OAUTH2 ORACLE on premise identity manager OIM ====
+      #- ORACLE_OIM_ENABLED=true
+      #-----------------------------------------------------------------
       # ==== OAUTH2 AZURE ====
       # https://github.com/wekan/wekan/wiki/Azure
       # 1) Register the application with Azure. Make sure you capture
@@ -333,6 +330,10 @@ services:
       # 2) Configure the environment variables. This differs slightly
       #     by installation type, but make sure you have the following:
       #- OAUTH2_ENABLED=true
+      # Optional OAuth2 CA Cert, see https://github.com/wekan/wekan/issues/3299
+      #- OAUTH2_CA_CERT=ABCD1234
+      # Use OAuth2 ADFS additional changes. Also needs OAUTH2_ENABLED=true setting.
+      #- OAUTH2_ADFS_ENABLED=false
       # OAuth2 login style: popup or redirect.
       #- OAUTH2_LOGIN_STYLE=redirect
       # Application GUID captured during app registration:
@@ -353,8 +354,9 @@ services:
       #- OAUTH2_EMAIL_MAP=email
       #-----------------------------------------------------------------
       # ==== OAUTH2 Nextcloud ====
-      # 1) Register the application with Nextcloud: https://your.nextcloud/settings/admin/security
+      # 1) Register the application with Nextcloud: https://your.nextcloud/index.php/settings/admin/security
       #    Make sure you capture the application ID as well as generate a secret key.
+      #    Use https://your.wekan/_oauth/oidc for the redirect URI.
       # 2) Configure the environment variables. This differs slightly
       #     by installation type, but make sure you have the following:
       #- OAUTH2_ENABLED=true
@@ -598,9 +600,26 @@ services:
       # example : LOGOUT_ON_MINUTES=55
       #- LOGOUT_ON_MINUTES=
       #-------------------------------------------------------------------
-      # Hide password login form 
+      # Hide password login form
       # - PASSWORD_LOGIN_ENABLED=true
       #-------------------------------------------------------------------
+      #- CAS_ENABLED=true
+      #- CAS_BASE_URL=https://cas.example.com/cas
+      #- CAS_LOGIN_URL=https://cas.example.com/login
+      #- CAS_VALIDATE_URL=https://cas.example.com/cas/p3/serviceValidate
+      #---------------------------------------------------------------------
+      #- SAML_ENABLED=true
+      #- SAML_PROVIDER=
+      #- SAML_ENTRYPOINT=
+      #- SAML_ISSUER=
+      #- SAML_CERT=
+      #- SAML_IDPSLO_REDIRECTURL=
+      #- SAML_PRIVATE_KEYFILE=
+      #- SAML_PUBLIC_CERTFILE=
+      #- SAML_IDENTIFIER_FORMAT=
+      #- SAML_LOCAL_PROFILE_MATCH_ATTRIBUTE=
+      #- SAML_ATTRIBUTES=
+      #---------------------------------------------------------------------
     depends_on:
       - wekandb
 

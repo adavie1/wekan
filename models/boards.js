@@ -18,18 +18,14 @@ Boards.attachSchema(
       type: String,
       // eslint-disable-next-line consistent-return
       autoValue() {
-        // XXX We need to improve slug management. Only the id should be necessary
-        // to identify a board in the code.
-        // XXX If the board title is updated, the slug should also be updated.
         // In some cases (Chinese and Japanese for instance) the `getSlug` function
         // return an empty string. This is causes bugs in our application so we set
         // a default slug in this case.
-        if (this.isInsert && !this.isSet) {
+        // Improvment would be to change client URL after slug is changed
+        const title = this.field('title');
+        if (title.isSet && !this.isSet) {
           let slug = 'board';
-          const title = this.field('title');
-          if (title.isSet) {
-            slug = getSlug(title.value) || slug;
-          }
+          slug = getSlug(title.value) || slug;
           return slug;
         }
       },
@@ -255,6 +251,10 @@ Boards.attachSchema(
         'dark',
         'relax',
         'corteza',
+        'clearblue',
+        'natural',
+        'modern',
+        'moderndark',
       ],
       // eslint-disable-next-line consistent-return
       autoValue() {
@@ -1216,6 +1216,14 @@ if (Meteor.isServer) {
     fetch: ['members'],
   });
 
+  // All logged in users are allowed to reorder boards by dragging at All Boards page and Public Boards page.
+  Boards.allow({
+    update(userId, board, fieldNames) {
+      return _.contains(fieldNames, 'sort');
+    },
+    fetch: [],
+  });
+
   // The number of users that have starred this board is managed by trusted code
   // and the user is not allowed to update it
   Boards.deny({
@@ -1744,6 +1752,41 @@ if (Meteor.isServer) {
         data: error,
       });
     }
+  });
+
+  //ATTACHMENTS REST API
+  /**
+   * @operation get_board_attachments
+   * @summary Get the list of attachments of a board
+   *
+   * @param {string} boardId the board ID
+   * @return_type [{attachmentId: string,
+   *                attachmentName: string,
+   *                attachmentType: string,
+   *                cardId: string,
+   *                listId: string,
+   *                swimlaneId: string}]
+   */
+  JsonRoutes.add('GET', '/api/boards/:boardId/attachments', function(req, res) {
+    const paramBoardId = req.params.boardId;
+    Authentication.checkBoardAccess(req.userId, paramBoardId);
+    JsonRoutes.sendResult(res, {
+      code: 200,
+      data: Attachments.files
+        .find({ boardId: paramBoardId }, { fields: { boardId: 0 } })
+        .map(function(doc) {
+          return {
+            attachmentId: doc._id,
+            attachmentName: doc.original.name,
+            attachmentType: doc.original.type,
+            url: FlowRouter.url(doc.url()),
+            urlDownload: `${FlowRouter.url(doc.url())}?download=true&token=`,
+            cardId: doc.cardId,
+            listId: doc.listId,
+            swimlaneId: doc.swimlaneId,
+          };
+        }),
+    });
   });
 }
 
